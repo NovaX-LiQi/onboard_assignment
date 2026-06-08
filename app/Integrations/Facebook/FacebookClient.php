@@ -3,7 +3,7 @@
 namespace App\Integrations\Facebook;
 
 use Illuminate\Support\Facades\Http;
-use App\Integrations\Facebook\Dto\FacebookInsightsRequestDTO;
+use App\Dtos\FacebookInsightsRequestDTO;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 
@@ -133,6 +133,7 @@ class FacebookClient
 
         //连续失败 5 次，开启熔断
         if ($fails >= 5) {
+            //SET with EXpiration
             Redis::setex($this->cbKey, 30, 'open'); //熔断 30 秒，拒绝任何网络请求
             Log::warning('Circuit breaker flipped to OPEN for Facebook API. Direct block enabled for 30s.');
         }

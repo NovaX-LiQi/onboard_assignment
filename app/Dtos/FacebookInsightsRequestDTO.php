@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Integrations\Facebook\Dto;
+namespace App\Dtos;
 
 class FacebookInsightsRequestDTO
 {

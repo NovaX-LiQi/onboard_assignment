@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Integrations\Facebook\Dto\FacebookInsightsRequestDTO;
+use App\Dtos\FacebookInsightsRequestDTO;
 use App\Integrations\Facebook\FacebookClient;
 use App\Integrations\Facebook\FacebookService;
 use App\Repositories\ExternalAccountRepository;
@@ -94,7 +94,7 @@ class SyncFacebookInsightsJob implements ShouldQueue
 
             //手动解析依赖（因为 failed 函数不由 Container 自动注入参数）
             $jobRepository = app(IntegrationJobRepository::class);
-            $dto = \App\Integrations\Facebook\Dto\FacebookInsightsRequestDTO::fromArray($this->dtoData);
+            $dto = FacebookInsightsRequestDTO::fromArray($this->dtoData);
 
             //捞出这个渠道最后一次运行中的日志
             $jobRecord = $jobRepository->getLatestJobByProvider($dto->provider);

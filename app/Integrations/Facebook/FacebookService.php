@@ -2,7 +2,7 @@
 
 namespace App\Integrations\Facebook;
 
-use App\Integrations\Facebook\Dto\FacebookInsightsRequestDTO;
+use App\Dtos\FacebookInsightsRequestDTO;
 use App\Repositories\InsightRecordRepository;
 
 class FacebookService

@@ -32,7 +32,7 @@ The project utilizes data sanitization via FormRequests, structured DTOs, and th
 Create a structured Data Transfer Object under App\Integrations\{Provider}\Dto to parse array data into typed properties. 
 
 Example Class Structure:
-- Namespace: App\Integrations\Facebook\Dto
+- Namespace: App\Dtos
 - Class: FacebookInsightsRequestDTO
 - Properties: string $provider, string $level, array $fields, string $dateFrom, string $dateTo
 - Methods:

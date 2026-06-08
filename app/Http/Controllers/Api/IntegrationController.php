@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ConnectIntegrationRequest;
 use App\Http\Requests\SyncInsightsRequest;
-use App\Integrations\Facebook\Dto\FacebookInsightsRequestDTO;
+use App\Dtos\FacebookInsightsRequestDTO;
 use App\Integrations\Facebook\FacebookClient;
 use App\Repositories\ExternalAccountRepository;
 use App\Jobs\SyncFacebookInsightsJob;
