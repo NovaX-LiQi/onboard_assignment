@@ -1,0 +1,7 @@
+[90m= [39m[34;4mApp\Models\Tenant[39;24m {#7978
+    [34mid[39m: [32m"[39m[32mtenant1[39m[32m"[39m,
+    [34mdata[39m: [36mnull[39m,
+    [34mupdated_at[39m: [32m"[39m[32m2026-06-03 08:39:45[39m[32m"[39m,
+    [34mcreated_at[39m: [32m"[39m[32m2026-06-03 08:39:45[39m[32m"[39m,
+    [34mtenancy_db_name[39m: [32m"[39m[32mtenanttenant1[39m[32m"[39m,
+  }
