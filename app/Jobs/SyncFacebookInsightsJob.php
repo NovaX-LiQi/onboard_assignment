@@ -83,4 +83,42 @@ class SyncFacebookInsightsJob implements ShouldQueue
             tenancy()->end();
         }
     }
+
+    /**
+     * 任务彻底失败后的【Dead-letter Queue】/ 退避兜底处理
+     */
+    public function failed(\Throwable $exception): void
+    {
+        try {
+            tenancy()->initialize($this->tenantId);
+
+            //手动解析依赖（因为 failed 函数不由 Container 自动注入参数）
+            $jobRepository = app(IntegrationJobRepository::class);
+            $dto = \App\Integrations\Facebook\Dto\FacebookInsightsRequestDTO::fromArray($this->dtoData);
+
+            //捞出这个渠道最后一次运行中的日志
+            $jobRecord = $jobRepository->getLatestJobByProvider($dto->provider);
+            
+            if ($jobRecord && $jobRecord->status === 'running') {
+                //将状态变更为终态失败，并记录死信错误原因
+                $jobRepository->updateStatus(
+                    $jobRecord, 
+                    'failed', 
+                    '[DLQ Max Tries Exceeded] ' . $exception->getMessage()
+                );
+            }
+
+            //Log记录
+            Log::critical("Job permanently failed after {$this->tries} attempts. Moved to DLQ logic.", [
+                'tenant_id' => $this->tenantId,
+                'dto' => $this->dtoData,
+                'error' => $exception->getMessage()
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error("Failed to execute DLQ logic: " . $e->getMessage());
+        } finally {
+            tenancy()->end();
+        }
+    }
 }

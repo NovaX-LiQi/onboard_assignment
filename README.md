@@ -70,23 +70,35 @@ Extend ConnectIntegrationRequest and SyncInsightsRequest validation constraints 
 
 ## 🔄 Failure & Retry Strategy
 
-External ad network APIs are prone to transient dropouts, rate limits, and throttling. The system handles failures gracefully across three architectural tiers:
+External ad network APIs are prone to transient dropouts, rate limits, and throttling. The system handles failures gracefully across five architectural tiers:
 
 ### 1. HTTP Layer Network Resilience
 All outgoing client connections enforce strict connection guards:
-* Timeouts: Http::timeout(30) ensures slow connection gateways do not lock up queue threads indefinitely.
-* Retries: retry(3, 200) instantly mitigates minor network ripples by retrying failed attempts up to 3 times with a 200ms delay before throwing an exception.
+* Timeouts: `Http::timeout(30)` ensures slow connection gateways do not lock up queue threads indefinitely.
+* Retries: `retry(3, 200)` instantly mitigates minor network ripples by retrying failed attempts up to 3 times with a 200ms delay before throwing an exception.
 
 ### 2. Queue Linear Backoffs
 When a job encounters a valid failure (e.g., API token expiration or explicit server side errors), it is managed by a structural retry policy configured inside the queue handler:
-- $tries = 3 -> Maximum 3 execution attempts before failure.
-- $backoff = 60 -> Wait 60 seconds between sequential retry attempts.
+- `$tries = 3` -> Maximum 3 execution attempts before failure.
+- `$backoff = 60` -> Wait 60 seconds between sequential retry attempts.
 
-### 3. Stateful Job Auditing
-Every data synchronization event logs its execution lifecycle within the tenant's localized database through IntegrationJobRepository:
-* Upon dispatching, an explicit audit trail is logged with a status of 'running'.
-* If a critical failure happens, the catch block captures the exception, logs it via Log::error, and calls updateStatus($jobRecord, 'failed', $e->getMessage()).
-* Note: The job safely re-throws the exception (throw $e) at the end of the catch process so the underlying Laravel queue manager handles the retry backoff safely.
+### 3. Distributed Circuit Breaker (Stateful Throttling)
+To protect both upstream ad networks and internal workers from wasting execution slots during total partner blackouts, `FacebookClient` integrates a Redis-backed stateful **Circuit Breaker**:
+* **Failure Window:** Systemic faults (such as 5xx server errors, timeouts, or HTTP `429 Too Many Requests`) increment a sliding window failure counter in Redis (`cb:facebook:fail_count`) with a 60-second TTL.
+* **State Transition:** Upon reaching **5 consecutive systemic failures**, the circuit breaker flips to **`OPEN`** state for 30 seconds (`cb:facebook:status = open`).
+* **Fail-Fast Interception:** Any multi-tenant sync jobs attempting to fetch data while the breaker is `OPEN` are instantly blocked at the edge, short-circuiting and throwing a `\RuntimeException` *before* hitting the network.
+* **Policy Exception:** Standard user-induced HTTP `4xx` client errors (e.g., `400 Invalid Parameter`) are treated as business-logic bypasses and explicitly **do not** trip the circuit breaker.
+
+### 4. Dead-letter Queue (DLQ) & Permanent Failure Trapping
+When a synchronization task exhausts its max retries (`$tries = 3`) without success, Laravel's queue worker delegates the final failure to the `failed(\Throwable $exception)` hook, serving as our architectural **Dead-letter Queue (DLQ)** processor:
+* **Context Preservation:** The handler dynamically boots into the failed job's specific tenant isolation sandbox using `tenancy()->initialize($this->tenantId)`.
+* **State Finalization:** It queries the corresponding operational log record and performs a hard status lock—mutating the status to `failed` and embedding the full error context prefixed with `[DLQ Max Tries Exceeded]` into the dedicated **`error`** column.
+* **Context Isolation:** The lifecycle is enclosed inside a protective `try-catch-finally` perimeter to guarantee that downstream failures within the DLQ processor never leak the tenant database connection boundaries (`tenancy()->end()`).
+
+### 5. Stateful Job Auditing
+Every data synchronization event logs its execution lifecycle within the tenant's localized database through `IntegrationJobRepository`:
+* Upon dispatching, an explicit audit trail is logged with a status of `running`.
+* If a transient failure occurs during the active job loop, the inner `catch` block captures the exception, logs it, updates the database `error` field, and re-throws the exception (`throw $e`) to safely trigger Laravel's native queue backoff retry pipeline.
 
 ---
 
@@ -141,11 +153,15 @@ Testing a database-per-tenant architecture introduces unique challenges, such as
 
 ### 2. Concrete Test Profiles & Boundary Validations
 A. Integration, Queue & Scheduler Testing (FacebookSyncJobTest)
-Validates asynchronous job execution loops and CRON scheduling mechanisms:
+Validates asynchronous job execution loops, CRON scheduling mechanisms, and self-healing state structures:
 
-Generator Multi-Page Mocking: Utilizes Http::sequence() to mimic Facebook Graph API cursor pagination (paging.next). It ensures that SyncFacebookInsightsJob processes multiple page streams sequentially and verifies that records are properly stored within the tenant database via $this->tenant->run().
+* **Generator Multi-Page Mocking:** Utilizes `Http::sequence()` to mimic Facebook Graph API cursor pagination (`paging.next`). It ensures that `SyncFacebookInsightsJob` processes multiple page streams sequentially and verifies that records are properly stored within the tenant database via `$this->tenant->run()`.
 
-Scheduler Fanout Verification: Uses Queue::fake() and Artisan::call('schedule:run') to ensure the central daily sync coordinator scans external accounts and correctly dispatches RunFacebookDailySyncJob to the queue with the appropriate decoupled tenantId.
+* **Distributed Circuit Breaker Assertions:** Simulates absolute provider blackouts (HTTP 500 sequence) to assert that the stateful sliding window opens exactly at the 5th step, blocks the 6th processing call via local exceptions, and cleanly ignores 4xx validation errors to prevent false-positive lockouts.
+
+* **DLQ State & Database Cleansing:** Asserts that when a job permanently errors out, the `failed()` callback accurately intercepts the failure, boots tenant configurations, and marks the job record as `failed` with the explicit DLQ message. Testing this relies on **`assertDatabaseHas()`** targeting the **`error`** column inside `integration_jobs`, piercing through Eloquent's model memory state and ensuring physical row persistence.
+
+* **Scheduler Fanout Verification:** Uses `Queue::fake()` and `Artisan::call('schedule:run')` to ensure the central daily sync coordinator scans external accounts and correctly dispatches `RunFacebookDailySyncJob` to the queue with the appropriate decoupled `tenantId`.
 
 B. Tenant-Scoped API & Controller Testing (IntegrationBusinessTest)
 Validates RESTful API endpoints matching tenant-isolated routing domains:

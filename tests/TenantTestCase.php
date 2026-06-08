@@ -5,6 +5,7 @@ namespace Tests;
 use App\Models\Tenant;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redis;
 
 abstract class TenantTestCase extends TestCase
 {
@@ -17,6 +18,9 @@ abstract class TenantTestCase extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        //进来先强行清空 Redis，防止上一个用例残留的熔断状态影响当前用例
+        Redis::flushall();
 
         //【安全防线】为了防止上次测试意外中断导致残留，进来先强行清理一次
         $this->cleanupTenantSystem();
