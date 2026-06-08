@@ -124,24 +124,6 @@ if ($url !== null) { usleep(200000); } // 200ms polite pause before pulling the 
 * Assumption: Deep nested exception messages and JSON responses from corporate Graph APIs can contain immense payload tracking strings.
 * Trade-off: The IntegrationJobRepository forces error field constraints through string length clipping: substr($error, 0, 1000). While this occasionally truncates extremely long stack traces, it acts as a defensive strategy preventing database crashes caused by "Data too long" exceptions, ensuring that system monitoring remains active.
 
-## 🔒 Security Considerations
-
-### 1. Prevention of Horizontal Privilege Escalation
-Cross-tenant data leakage is completely blocked by enforcing tenant-scoped authentication and authorizing actions at the controller perimeter using:
-`Gate::authorize('manageSettings', [tenant()]);`
-
-The TenantIntegrationPolicy validates that the actively authenticated tenant owner running the session explicitly owns the tenant() identifier being requested.
-
-### 2. Sanctum Token Model Overrides
-Standard Laravel Sanctum reads from a single central database table. Because this system splits tenants into completely different databases, token evaluation is overridden inside AppServiceProvider:
-`\Laravel\Sanctum\Sanctum::usePersonalAccessTokenModel(\App\Models\SanctumToken::class);`
-
-This enables Sanctum API tokens (tokens()->create()) to be evaluated dynamically inside the specific tenant's database partition.
-
-### 3. API Politeness and Throttle Compliance
-To prevent upstream servers from blocking or penalizing tenant access tokens for aggressive pagination scraping, the FacebookClient pagination loop enforces a micro-throttle policy:
-`if ($url !== null) { usleep(200000); } // 200ms polite pause before pulling the next cursor page`
-
 ---
 
 ## 🧪 Testing Strategy
@@ -156,7 +138,7 @@ Testing a database-per-tenant architecture introduces unique challenges, such as
   SELECT pg_terminate_backend(pg_stat_activity.pid)
   FROM pg_stat_activity
   WHERE pg_stat_activity.datname = ? AND pid <> pg_backend_pid();
-  
+
 ### 2. Concrete Test Profiles & Boundary Validations
 A. Integration, Queue & Scheduler Testing (FacebookSyncJobTest)
 Validates asynchronous job execution loops and CRON scheduling mechanisms:
@@ -178,19 +160,3 @@ Validates global onboarding endpoints and the dual-routing resolution pipeline:
 Central Onboarding Pipeline: Validates that hitting the central /api/tenants routes successfully creates global records in the central pgsql connection, initializes the tenant lifecycle, and issues cross-database Sanctum tokens.
 
 Dual Routing Contexts: Asserts that tenants can be successfully resolved via either Domain-based routing (http://{tenant.domain}/api/*) using traditional bearer tokens, or Header-based routing (/api/v1/app/*) via custom X-Tenant headers.
-
-⚖️ Assumptions & Trade-offs
-1. Cron-to-Queue Fanout Decoupling
-Assumption: The scheduler expects an active, multi-worker supervisor queue subsystem (queue:work) to run alongside the core platform.
-
-Trade-off: The daily cron coordinator utilizes chunkById(100) to read active tenants from the central table. It does not query third-party APIs on the schedule thread. It acts strictly as an execution dispatcher, pushing lightweight sync tasks onto asynchronous queues. This keeps the cron lifecycle exceptionally short and delegates high-compute processing to queue workers.
-
-2. Idempotent Target Overwriting vs. Bulk Inserts
-Assumption: Upstream marketing metrics can retroactively shift due to ad-fraud reconciliations or late attribute adjustments.
-
-Trade-off: Data persistence uses InsightRecordRepository::updateOrCreateRecord(). Row-by-row lookups are slower than raw SQL mass-inserts. However, this trade-off is made to ensure absolute consistency and idempotency. If a daily sync task runs multiple times for an overlapping timeframe, data is cleanly overwritten rather than creating duplicate row aggregates.
-
-3. Defensive Error Truncation
-Assumption: Deep nested exception messages and JSON responses from corporate Graph APIs can contain immense payload tracking strings.
-
-Trade-off: The IntegrationJobRepository forces error field constraints through string length clipping: substr($error, 0, 1000). While this occasionally truncates extremely long stack traces, it acts as a defensive strategy preventing database crashes caused by "Data too long" exceptions, ensuring that system monitoring remains active.
