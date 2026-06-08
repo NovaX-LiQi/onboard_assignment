@@ -18,21 +18,21 @@ abstract class TenantTestCase extends TestCase
     {
         parent::setUp();
 
-        // 1. 【安全防线】为了防止上次测试意外中断导致残留，进来先强行清理一次
+        //【安全防线】为了防止上次测试意外中断导致残留，进来先强行清理一次
         $this->cleanupTenantSystem();
 
-        // 2. 创建测试租户和域名
+        //创建测试租户和域名
         $this->tenant = Tenant::create(['id' => 'test']);
         $this->tenant->domains()->create(['domain' => $this->domain]);
 
-        // 3. 为该租户生成测试用的 Sanctum Token
+        //为该租户生成测试用的 Sanctum Token
         $tokenResult = $this->tenant->createToken('test-token');
         $this->tenantToken = $tokenResult->plainTextToken;
     }
 
     protected function tearDown(): void
     {
-        // 4. 测试结束，安全清理
+        //测试结束，安全清理
         $this->cleanupTenantSystem();
 
         parent::tearDown();
@@ -43,24 +43,24 @@ abstract class TenantTestCase extends TestCase
      */
     protected function cleanupTenantSystem(): void
     {
-        // 核心：让 Tenancy 扩展包退出租户上下文，回到中央库连接
+        //让 Tenancy 扩展包退出租户上下文，回到中央库连接
         if (function_exists('tenancy') && tenancy()->initialized) {
             tenancy()->end();
         }
 
-        // 核心修复：强行关闭租户的 DB 连接，释放 PostgreSQL 进程锁
-        // 请确保这里的 'tenant' 对应你 config/database.php 里的租户连接名称
+        //核心修复：强行关闭租户的 DB 连接，释放 PostgreSQL 进程锁
+        //请确保这里的 'tenant' 对应你 config/database.php 里的租户连接名称
         DB::purge('tenant');
         DB::disconnect('tenant');
 
-        // 查出 test 租户并将其斩草除根（会连带触发 DROP DATABASE）
+        //查出test tenant并将其根除（会连带触发 DROP DATABASE）
         $tenant = Tenant::find('test');
         if ($tenant) {
             try {
                 $tenant->delete();
             } catch (\Exception $e) {
-                // 如果 Postgres 依然因为某些极度顽固的死锁报 Object in use，
-                // 我们通过中央库发指令，强行踢掉所有正在连接该测试库的 Postgres 进程
+                //如果 Postgres 依然因为某些极度顽固的死锁报 Object in use，
+                //我们通过中央库发指令，强行踢掉所有正在连接该测试库的 Postgres 进程
                 $dbName = $tenant->database()->getName();
                 
                 DB::connection('pgsql')->statement("
@@ -70,7 +70,7 @@ abstract class TenantTestCase extends TestCase
                       AND pid <> pg_backend_pid();
                 ", [$dbName]);
 
-                // 进程踢掉后，再次尝试删除
+                //进程踢掉后，再次尝试删除
                 $tenant->delete();
             }
         }

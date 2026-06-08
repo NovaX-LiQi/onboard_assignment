@@ -25,7 +25,6 @@ test('it can create a tenant and issue a token via central api', function () {
 });
 
 test('it allows access via domain tenancy middleware', function () {
-    // 此时 $this->tenantToken 和 $this->domain 自动高亮，不会报 Undefined
     $this->withHeaders([
         'Authorization' => "Bearer {$this->tenantToken}",
     ])->getJson("http://{$this->domain}/api/insights")
@@ -42,9 +41,9 @@ test('it allows access via x tenant header middleware', function () {
 });
 
 test('it blocks access if token is missing or invalid', function () {
-    $this->getJson("http://{$this->domain}/api/insights")->assertStatus(401);
+    $this->getJson("http://{$this->domain}/api/insights")->assertStatus(401); //没使用token
 
     $this->withHeaders([
         'Authorization' => 'Bearer wrong_token',
-    ])->getJson("http://{$this->domain}/api/insights")->assertStatus(401);
+    ])->getJson("http://{$this->domain}/api/insights")->assertStatus(401); //token错误
 });
