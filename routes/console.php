@@ -1,7 +1,6 @@
 <?php
 
 use App\Jobs\RunFacebookDailySyncJob;
-use App\Models\ExternalAccount;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -17,15 +16,7 @@ Schedule::call(function () {
     Tenant::query()->chunkById(100, function ($tenants) {
 
         foreach ($tenants as $tenant) {
-
-            //是不是有facebook
-            $hasFacebook = $tenant->run(function () {
-                return ExternalAccount::where('provider', 'facebook')->exists();
-            });
-
-            if ($hasFacebook) {
-                RunFacebookDailySyncJob::dispatch($tenant->id);
-            }
+            RunFacebookDailySyncJob::dispatch($tenant->id);
         }
     });
 

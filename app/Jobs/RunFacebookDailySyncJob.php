@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Dtos\FacebookInsightsRequestDTO;
+use App\Models\ExternalAccount;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -19,6 +20,11 @@ class RunFacebookDailySyncJob implements ShouldQueue
         try {
             //切换进该租户
             tenancy()->initialize($this->tenantId);
+
+            $hasFacebook = ExternalAccount::where('provider', 'facebook')->exists();
+            if (!$hasFacebook) {
+                return; 
+            }
 
             $date = now()->subDay();
             $levels = ['ad', 'adset', 'campaign'];
