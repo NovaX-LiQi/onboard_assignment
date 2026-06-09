@@ -3,26 +3,24 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreTenantRequest;
+use App\Services\TenantService;
 use App\Models\Tenant;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class TenantController extends Controller
 {
-    public function store(Request $request): JsonResponse
+    protected $tenantService;
+
+    public function __construct(TenantService $tenantService)
     {
-        $request->validate([
-            'id' => ['required', 'string', 'unique:tenants,id'],
-            'domain' => ['required', 'string', 'unique:domains,domain'],
-        ]);
+        $this->tenantService = $tenantService;
+    }
 
-        $tenant = Tenant::create([
-            'id' => $request->id,
-        ]);
-
-        $tenant->domains()->create([
-            'domain' => $request->domain,
-        ]);
+    public function store(StoreTenantRequest $request): JsonResponse
+    {
+        $tenant = $this->tenantService->registerTenant($request->validated());
 
         return response()->json([
             'message' => 'Tenant created',
@@ -37,18 +35,13 @@ class TenantController extends Controller
             'token_name' => ['nullable', 'string'],
         ]);
         
-        $tenant = Tenant::find($request->tenant_id);
-        
-        $tokenName = $request->token_name ?? 'postman-sanctum-key';
+        $result = $this->tenantService->issueNewToken(
+            $request->tenant_id, 
+            $request->token_name
+        );
 
-        $tenant->tokens()->delete();
-
-        $tokenResult = $tenant->createToken($tokenName);
-
-        return response()->json([
+        return response()->json(array_merge([
             'message' => 'Token issued successfully',
-            'tenant_id' => $tenant->id,
-            'token' => $tokenResult->plainTextToken,
-        ]);
+        ], $result));
     }
 }
